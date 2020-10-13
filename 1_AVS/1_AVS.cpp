@@ -5,22 +5,38 @@
 
 using namespace std;
 
+static __int16 mock_return[8], mmx_return[8];
+
+
 int my_random(int min, int max) {
     return min + rand() % (max - min);
 }
 
-static __int16 F[8];
-
-
 __int16* mmx_mock(__int8 A[], __int8 B[], __int8 C[], __int16 D[]) {
     for (int i = 0; i < 8; i++) {
-        F[i] = A[i] * C[i] + B[i] * D[i];
+        mock_return[i] = A[i] * C[i] + B[i] * D[i];
     }
-    return F;
+    return mock_return;
+}
+
+void convert_8_to_16(__m64* bytes, __m64* lwords, __m64* rwords) {
+    *lwords = _mm_xor_si64(*lwords, *lwords);
+    *lwords = _mm_cmpgt_pi8(*lwords, *bytes);
+    *lwords = _mm_unpacklo_pi8(*bytes, *lwords);
+    *rwords = _mm_xor_si64(*rwords, *rwords);
+    *rwords = _mm_cmpgt_pi8(*rwords, *bytes);
+    *rwords = _mm_unpackhi_pi8(*bytes, *rwords);
+}
+
+void multiply_4_words_by_4_words_saturation(__m64* lwords, __m64* rwords, __m64* return_val) {
+    __m64 low = _mm_mullo_pi16(*lwords, *rwords);
+    __m64 high = _mm_mulhi_pi16(*lwords, *rwords);
+    *lwords = _m_punpcklwd(low, high);
+    *rwords = _m_punpckhwd(low, high);
+    *return_val = _mm_packs_pi32(*lwords, *rwords);
 }
 
 __int16* mmx(__int8 *a, __int8 *b, __int8 *c, __int16 *d) {
-    static __int16 f[8];
     __m64 
         * mm0,
         * mm1,
@@ -33,77 +49,41 @@ __int16* mmx(__int8 *a, __int8 *b, __int8 *c, __int16 *d) {
 
     mm0 = (__m64*)a;
     mm1 = (__m64*)c;
-    *mm2 = _mm_xor_si64(*mm2, *mm2);
-    *mm2 = _mm_cmpgt_pi8(*mm2, *mm0);
-    *mm2 = _mm_unpacklo_pi8(*mm0, *mm2); //low a
-    *mm3 = _mm_xor_si64(*mm3, *mm3);
-    *mm3 = _mm_cmpgt_pi8(*mm3, *mm0);
-    *mm3 = _mm_unpackhi_pi8(*mm0, *mm3); //high a
 
-    *mm4 = _mm_xor_si64(*mm4, *mm4);
-    *mm4 = _mm_cmpgt_pi8(*mm4, *mm1);
-    *mm4 = _mm_unpacklo_pi8(*mm1, *mm4); //low c
-    *mm5 = _mm_xor_si64(*mm5, *mm5);
-    *mm5 = _mm_cmpgt_pi8(*mm5, *mm1);
-    *mm5 = _mm_unpackhi_pi8(*mm1, *mm5); //high c
+    convert_8_to_16(mm0, mm2, mm3);
+    convert_8_to_16(mm1, mm4, mm5);
 
-    *mm0 = _mm_mullo_pi16(*mm2, *mm4); //b*d 0-3 low
-    *mm1 = _mm_mulhi_pi16(*mm2, *mm4); //b*d 0-3 high
-    *mm2 = _m_punpcklwd(*mm0, *mm1);
-    *mm4 = _m_punpckhwd(*mm0, *mm1);
-    *mm0 = _mm_packs_pi32(*mm2, *mm4);
-
-    *mm1 = _mm_mullo_pi16(*mm3, *mm5); //b*d 0-3 low
-    *mm2 = _mm_mulhi_pi16(*mm3, *mm5); //b*d 0-3 high
-    *mm3 = _m_punpcklwd(*mm1, *mm2);
-    *mm2 = _m_punpckhwd(*mm1, *mm2);
-    *mm1 = _mm_packs_pi32(*mm3, *mm2);
-
-    ////////////////////////////////////////////////////// ниже все ок
+    multiply_4_words_by_4_words_saturation(mm2, mm4, mm0);
+    multiply_4_words_by_4_words_saturation(mm3, mm5, mm1);
 
     mm2 = (__m64*)b;
-    *mm3 = _mm_xor_si64(*mm3, *mm3);
-    *mm3 = _mm_cmpgt_pi8(*mm3, *mm2);
-    *mm3 = _mm_unpacklo_pi8(*mm2, *mm3); //low b
-    *mm4 = _mm_xor_si64(*mm4, *mm4);
-    *mm4 = _mm_cmpgt_pi8(*mm4, *mm2);
-    *mm4 = _mm_unpackhi_pi8(*mm2, *mm4); //high b
+
+    convert_8_to_16(mm2, mm3, mm4);
 
     mm5 = (__m64*)d; //low d
     mm6 = (__m64*)(d+4); //high d
 
-    // !mm0, !mm1, !mm4, !mm6
-    *mm2 = _mm_mullo_pi16(*mm3, *mm5); //b*d 0-3 low
-    *mm3 = _mm_mulhi_pi16(*mm3, *mm5); //b*d 0-3 high
-    *mm5 = _m_punpcklwd(*mm2, *mm3);
-    *mm2 = _m_punpckhwd(*mm2, *mm3);
-    *mm2 = _mm_packs_pi32(*mm5, *mm2);
-
-    // !mm0, !mm1, !mm2
-    *mm5 = _mm_mullo_pi16(*mm4, *mm6); //b*d 4-7 low
-    *mm3 = _mm_mulhi_pi16(*mm4, *mm6); //b*d 4-7 high
-    *mm6 = _m_punpcklwd(*mm5, *mm3);
-    *mm5 = _m_punpckhwd(*mm5, *mm3);
-    *mm3 = _mm_packs_pi32(*mm6, *mm5);
+    multiply_4_words_by_4_words_saturation(mm3, mm5, mm2);
+    multiply_4_words_by_4_words_saturation(mm4, mm6, mm3);
 
     *mm0 = _mm_adds_pi16(*mm0, *mm2);
     *mm1 = _mm_adds_pi16(*mm1, *mm3);
 
-    memcpy(f, mm0, 8);
-    memcpy(f+4, mm1, 8);
+    memcpy(mmx_return, mm0, 8);
+    memcpy(mmx_return+4, mm1, 8);
 
     _mm_empty();
-    return f;
+    return mmx_return;
 }
 
 void cpu_time_mock(int tests) {
     const int length = 8;
     __int8
-        A[length], // = { -100, 43, 0, 65, -3, 98, 127, -29 },
-        B[length], // = { -3, 12, 3, 5, 6, -12, 5, 4 },
-        C[length]; // = { 21, 32, 56, 100, -0, 56, 11, -90 };
+        A[length],
+        B[length],
+        C[length];
     __int16
-        D[length]; // = { -546, 345, 643, 0, -301, 129, 1010, -4301 };
+        D[length];
 
     __int16* mmx_mock_res;
     __int16* mmx_res;
@@ -122,11 +102,11 @@ void cpu_time_mock(int tests) {
 void cpu_time_mmx(int tests) {
     const int length = 8;
     __int8
-        A[length], // = { -100, 43, 0, 65, -3, 98, 127, -29 },
-        B[length], // = { -3, 12, 3, 5, 6, -12, 5, 4 },
-        C[length]; // = { 21, 32, 56, 100, -0, 56, 11, -90 };
+        A[length],
+        B[length],
+        C[length];
     __int16
-        D[length]; // = { -546, 345, 643, 0, -301, 129, 1010, -4301 };
+        D[length];
 
     __int16* mmx_mock_res;
     __int16* mmx_res;
@@ -156,11 +136,11 @@ int main() {
     const int length = 8;
     const int tests = 10;
     __int8
-        A[length], // = { -100, 43, 0, 65, -3, 98, 127, -29 },
-        B[length], // = { -3, 12, 3, 5, 6, -12, 5, 4 },
-        C[length]; // = { 21, 32, 56, 100, -0, 56, 11, -90 };
+        A[length],
+        B[length],
+        C[length];
     __int16
-        D[length]; // = { -546, 345, 643, 0, -301, 129, 1010, -4301 };
+        D[length];
 
     __int16* mmx_mock_res;
     __int16* mmx_res;
