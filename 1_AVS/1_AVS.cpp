@@ -42,10 +42,10 @@ __int16* mmx(__int8 *a, __int8 *b, __int8 *c, __int16 *d) {
         * mm1,
         * mm6;
     __m64
-        * mm2 = &_mm_cvtsi32_si64(int(0)),
-        * mm3 = &_mm_cvtsi32_si64(int(0)),
-        * mm4 = &_mm_cvtsi32_si64(int(0)),
-        * mm5 = &_mm_cvtsi32_si64(int(0));
+        * mm2 = new __m64(),
+        * mm3 = new __m64(),
+        * mm4 = new __m64(),
+        * mm5 = new __m64();
 
     mm0 = (__m64*)a;
     mm1 = (__m64*)c;
@@ -56,9 +56,13 @@ __int16* mmx(__int8 *a, __int8 *b, __int8 *c, __int16 *d) {
     multiply_4_words_by_4_words_saturation(mm2, mm4, mm0);
     multiply_4_words_by_4_words_saturation(mm3, mm5, mm1);
 
+    delete mm2;
+
     mm2 = (__m64*)b;
 
     convert_8_to_16(mm2, mm3, mm4);
+
+    delete mm5;
 
     mm5 = (__m64*)d; //low d
     mm6 = (__m64*)(d+4); //high d
@@ -159,6 +163,12 @@ int main() {
 
         if (std::equal(mmx_mock_res, mmx_mock_res + 7, mmx_res, mmx_res + 7)) {
             cout << "Passed!" << endl;
+
+
+            for (int l = 0; l < length; l++) {
+                std::cout << static_cast<int16_t>(*(mmx_mock_res + l)) << " | ";
+                std::cout << static_cast<int16_t>(*(mmx_res + l)) << std::endl;
+            }
         }
         else
         {
