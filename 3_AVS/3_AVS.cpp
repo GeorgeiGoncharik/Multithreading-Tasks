@@ -63,18 +63,33 @@ int main()
         for (int i = 0; i < m; ++i)
             c[i] = new int[n];
 
+        int** d = new int* [m];
+        for (int i = 0; i < m; ++i)
+            d[i] = new int[n];
+
         for (int row = 0; row < m; row++)
             for (int col = 0; col < k; col++)
-                a[row][col] = my_random(INT_MIN, INT_MAX);
+                a[row][col] = my_random(-1000, 1000);
 
         for (int row = 0; row < k; row++)
             for (int col = 0; col < n; col++)
-                b[row][col] = my_random(INT_MIN, INT_MAX);
+                b[row][col] = my_random(-1000, 1000);
 
         std::cout << "not_parallel: ";
         not_parallel(m, n, k, a, b, c);
         std::cout << "parallel: ";
-        parallel(m, n, k, a, b, c);
+        parallel(m, n, k, a, b, d);
+
+        bool is_equal = true;
+        for (int i = 0; i < m; i++)
+            for (int j = 0; j < n; j++)
+                if (c[i][j] != d[i][j])
+                    is_equal = false;
+        if (is_equal)
+            std::cout << "equal!";
+        else
+            std::cout << "not equal!";
+
         std::cout << std::endl;
 
         for (int i = 0; i < m; ++i) {
@@ -91,6 +106,11 @@ int main()
             delete[] c[i];
         }
         delete[] c;
+
+        for (int i = 0; i < m; ++i) {
+            delete[] d[i];
+        }
+        delete[] d;
     }
 
 }
