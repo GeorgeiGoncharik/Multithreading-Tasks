@@ -14,7 +14,9 @@
 
 using namespace std;
 
-void mutex_counter(int numTasks, int numThreads) {
+//2 функции вместо 4, убрать сериализацию
+
+void mutex_counter(int numTasks, int numThreads, int delayNano) {
     vector<int8_t> arr(numTasks, 0);
     vector<thread> threads(numThreads);
     mutex door;
@@ -25,6 +27,7 @@ void mutex_counter(int numTasks, int numThreads) {
 
     for (int i = 0; i < numThreads; i++) {
         threads[i] = thread([&] {
+            auto delay = chrono::nanoseconds(delayNano);
             while (true) {
                 door.lock();
                 if (shared_counter == numTasks) {
@@ -34,17 +37,20 @@ void mutex_counter(int numTasks, int numThreads) {
                 arr[shared_counter] += 1;
                 shared_counter++;
                 door.unlock();
+                this_thread::sleep_for(chrono::nanoseconds(delay));
             }
             });
-        threads[i].join();
     }
+
+    for (int i = 0; i < numThreads; i++)
+        threads[i].join();
 
     auto stop = chrono::high_resolution_clock::now();
 
 
     auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
-    cout << "[mutex]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << ".\n";
+    cout << "[mutex_sleep]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << " delay(ns): " << delayNano << ".\n";
 
     for (int i = 0; i < numTasks; i++) {
         if (arr[i] != 1) {
@@ -54,48 +60,7 @@ void mutex_counter(int numTasks, int numThreads) {
     }
 }
 
-void mutex_counter_with_sleep(int numTasks, int numThreads) {
-    vector<int8_t> arr(numTasks, 0);
-    vector<thread> threads(numThreads);
-    mutex door;
-    int shared_counter = 0;
-
-    auto start = chrono::high_resolution_clock::now();
-
-
-    for (int i = 0; i < numThreads; i++) {
-        threads[i] = thread([&] {
-            while (true) {
-                door.lock();
-                if (shared_counter == numTasks) {
-                    door.unlock();
-                    return;
-                }
-                arr[shared_counter] += 1;
-                shared_counter++;
-                this_thread::sleep_for(chrono::nanoseconds(10));
-                door.unlock();
-            }
-            });
-        threads[i].join();
-    }
-
-    auto stop = chrono::high_resolution_clock::now();
-
-
-    auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-
-    cout << "[mutex_sleep]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << ".\n";
-
-    for (int i = 0; i < numTasks; i++) {
-        if (arr[i] != 1) {
-            cout << "not 1! index: " << i << endl;
-            break;
-        }
-    }
-}
-
-void atomic_counter(int numTasks, int numThreads) {
+void atomic_counter(int numTasks, int numThreads, int delayNano) {
     vector<int8_t> arr(numTasks, 0);
     vector<thread> threads(numThreads);
     atomic<int> atomic_counter{ 0 };
@@ -104,59 +69,27 @@ void atomic_counter(int numTasks, int numThreads) {
 
     for (int i = 0; i < numThreads; i++) {
         threads[i] = thread([&] {
+            auto delay = chrono::nanoseconds(delayNano);
             while (true) {
                 int value = atomic_counter.fetch_add(1);
                 if (value >= numTasks) {
                     return;
                 }
                 arr[value] += 1;
+                this_thread::sleep_for(chrono::nanoseconds(delay));
             }
             });
-        threads[i].join();
     }
+
+    for (int i = 0; i < numThreads; i++)
+        threads[i].join();
 
     auto stop = chrono::high_resolution_clock::now();
 
 
     auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
-    cout << "[atomic]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << ".\n";
-
-    for (int i = 0; i < numTasks; i++) {
-        if (arr[i] != 1) {
-            cout << "not 1! index: " << i << endl;
-            break;
-        }
-    }
-}
-
-void atomic_counter_with_sleep(int numTasks, int numThreads) {
-    vector<int8_t> arr(numTasks, 0);
-    vector<thread> threads(numThreads);
-    atomic<int> atomic_counter{ 0 };
-
-    auto start = chrono::high_resolution_clock::now();
-
-    for (int i = 0; i < numThreads; i++) {
-        threads[i] = thread([&] {
-            while (true) {
-                int value = atomic_counter.fetch_add(1);
-                if (value >= numTasks) {
-                    return;
-                }
-                arr[value] += 1;
-                this_thread::sleep_for(chrono::nanoseconds(10));
-            }
-            });
-        threads[i].join();
-    }
-
-    auto stop = chrono::high_resolution_clock::now();
-
-
-    auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-
-    cout << "[atomic_sleep]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << ".\n";
+    cout << "[atomic_sleep]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << " delay(ns): " << delayNano << ".\n";
 
     for (int i = 0; i < numTasks; i++) {
         if (arr[i] != 1) {
@@ -314,18 +247,19 @@ void test_queue(Queue& queue, int producerNum, int consumerNum, int taskNum) {
     };
 
     auto consumer = [&]() {
-        for (int i = 0; i < taskNum * producerNum / consumerNum; i++) {
+        for(int i = 0; i < taskNum * producerNum / consumerNum; i++) {
             uint8_t poppedValue = 0;
             while (!queue.pop(poppedValue));
-            sum += poppedValue;
+            sum.fetch_add(poppedValue);
         }
     };
 
     vector<thread> threads;;
-    for (int i = 0; i < producerNum; i++)
-        threads.push_back(thread(producer));
     for (int i = 0; i < consumerNum; i++)
         threads.push_back(thread(consumer));
+    for (int i = 0; i < producerNum; i++)
+        threads.push_back(thread(producer));
+
     for (int i = 0; i < consumerNum + producerNum; i++)
         threads[i].join();
 
@@ -345,7 +279,7 @@ void measure_time(Queue& queue) {
             test_queue(queue, producer, consumer, taskNum);
             auto end = chrono::high_resolution_clock::now();
             auto time = chrono::duration_cast<chrono::milliseconds>(end - start);
-            cout << "time: " << time.count() / 1000 << "\n\n";
+            cout << "time: " << time.count() << "ms\n\n";
         }
     }
 }
@@ -356,10 +290,10 @@ int main()
     cin >> ex;
     if(ex == 1)
         for (int i = 4; i <= 32; i *= 2) {
-            mutex_counter(1024 * 1024, i);
-            atomic_counter(1024 * 1024, i);
-            mutex_counter_with_sleep(1024 * 1024, i);
-            atomic_counter_with_sleep(1024 * 1024, i);
+            mutex_counter(1024 * 1024, i, 0);
+            atomic_counter(1024 * 1024, i, 0);
+            mutex_counter(1024 * 1024, i, 10);
+            atomic_counter(1024 * 1024, i, 10);
         }
     else if (ex == 2)
     {
