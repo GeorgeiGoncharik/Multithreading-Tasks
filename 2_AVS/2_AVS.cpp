@@ -14,87 +14,82 @@
 
 using namespace std;
 
-//2 функции вместо 4, убрать сериализацию
+class Counter
+{
+public:
+    virtual void Inc(int& value) = 0;
+};
 
-void mutex_counter(int numTasks, int numThreads, int delayNano) {
+class MutexCounter : public Counter
+{
+private:
+    int counter;
+    mutex door;
+
+public:
+    MutexCounter()
+    {
+        counter = 0;
+    }
+
+    void Inc(int& value) override
+    {
+        door.lock();
+        value = counter++;
+        door.unlock();
+    }
+};
+
+class AtomicCounter : public Counter
+{
+private:
+    atomic<int> atom;
+
+public:
+    AtomicCounter()
+    {
+        atom.store(0);
+    }
+
+    void Inc(int& value) override
+    {
+        value = atom.fetch_add(1);
+    }
+};
+
+void counter(Counter* counter, int numTasks, int numThreads, int delayNano) {
     vector<int8_t> arr(numTasks, 0);
     vector<thread> threads(numThreads);
     mutex door;
     int shared_counter = 0;
-
-    auto start = chrono::high_resolution_clock::now();
-
-
-    for (int i = 0; i < numThreads; i++) {
-        threads[i] = thread([&] {
-            auto delay = chrono::nanoseconds(delayNano);
-            while (true) {
-                door.lock();
-                if (shared_counter == numTasks) {
-                    door.unlock();
-                    return;
-                }
-                arr[shared_counter] += 1;
-                shared_counter++;
-                door.unlock();
-                this_thread::sleep_for(chrono::nanoseconds(delay));
-            }
-            });
-    }
-
-    for (int i = 0; i < numThreads; i++)
-        threads[i].join();
-
-    auto stop = chrono::high_resolution_clock::now();
-
-
-    auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-
-    cout << "[mutex_sleep]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << " delay(ns): " << delayNano << ".\n";
-
-    for (int i = 0; i < numTasks; i++) {
-        if (arr[i] != 1) {
-            cout << "not 1! index: " << i << endl;
-            break;
-        }
-    }
-}
-
-void atomic_counter(int numTasks, int numThreads, int delayNano) {
-    vector<int8_t> arr(numTasks, 0);
-    vector<thread> threads(numThreads);
     atomic<int> atomic_counter{ 0 };
 
     auto start = chrono::high_resolution_clock::now();
 
     for (int i = 0; i < numThreads; i++) {
         threads[i] = thread([&] {
-            auto delay = chrono::nanoseconds(delayNano);
-            while (true) {
-                int value = atomic_counter.fetch_add(1);
-                if (value >= numTasks) {
-                    return;
-                }
-                arr[value] += 1;
-                this_thread::sleep_for(chrono::nanoseconds(delay));
-            }
-            });
+            int index;
+            auto delay = std::chrono::nanoseconds(delayNano);
+            counter->Inc(index);
+            while (index < numTasks)
+            {
+                arr[index]++;
+                counter->Inc(index);
+                this_thread::sleep_for(delay);
+            }});
     }
 
     for (int i = 0; i < numThreads; i++)
         threads[i].join();
 
     auto stop = chrono::high_resolution_clock::now();
-
-
     auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
 
-    cout << "[atomic_sleep]duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << " delay(ns): " << delayNano << ".\n";
+    cout << "duration: " << duration.count() << " milliseconds. " << "threads count: " << numThreads << " delay(ns): " << delayNano << ".\n";
 
     for (int i = 0; i < numTasks; i++) {
         if (arr[i] != 1) {
-            cout << "not 1! index: " << i << endl;
-            break;
+            cout << "value: " << static_cast<int8_t>(arr[i]) << "index: " << i << endl;
         }
     }
 }
@@ -287,14 +282,22 @@ void measure_time(Queue& queue) {
 int main()
 {
     int ex;
+    cout << "exercsize no.: ";
     cin >> ex;
-    if(ex == 1)
+    if (ex == 1) 
+    {
+        int delay;
         for (int i = 4; i <= 32; i *= 2) {
-            mutex_counter(1024 * 1024, i, 0);
-            atomic_counter(1024 * 1024, i, 0);
-            mutex_counter(1024 * 1024, i, 10);
-            atomic_counter(1024 * 1024, i, 10);
+            delay = 0;
+            cout << "delay: " << delay << endl;
+            counter(new MutexCounter(),1024 * 1024, i, delay);
+            counter(new AtomicCounter(),1024 * 1024, i, delay);
+            delay = 10;
+            cout << "delay: " << delay << endl;
+            counter(new MutexCounter(), 1024 * 1024, i, delay);
+            counter(new AtomicCounter(), 1024 * 1024, i, delay);
         }
+    }
     else if (ex == 2)
     {
         DynamicQueue dynamic;
