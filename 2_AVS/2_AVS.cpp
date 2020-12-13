@@ -60,10 +60,7 @@ public:
 void counter(Counter* counter, int numTasks, int numThreads, int delayNano) {
     vector<int8_t> arr(numTasks, 0);
     vector<thread> threads(numThreads);
-    mutex door;
-    int shared_counter = 0;
-    atomic<int> atomic_counter{ 0 };
-
+    
     auto start = chrono::high_resolution_clock::now();
 
     for (int i = 0; i < numThreads; i++) {
@@ -287,15 +284,16 @@ int main()
     if (ex == 1) 
     {
         int delay;
+        int tasks = 1024 * 1024;
         for (int i = 4; i <= 32; i *= 2) {
             delay = 0;
             cout << "delay: " << delay << endl;
-            counter(new MutexCounter(),1024 * 1024, i, delay);
-            counter(new AtomicCounter(),1024 * 1024, i, delay);
+            counter(new MutexCounter(), tasks, i, delay);
+            counter(new AtomicCounter(), tasks, i, delay);
             delay = 10;
             cout << "delay: " << delay << endl;
-            counter(new MutexCounter(), 1024 * 1024, i, delay);
-            counter(new AtomicCounter(), 1024 * 1024, i, delay);
+            counter(new MutexCounter(), tasks, i, delay);
+            counter(new AtomicCounter(), tasks, i, delay);
         }
     }
     else if (ex == 2)
